@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1655990302332.000,
+    "dirty" : false,
+    "encoding" : "CP936",
+    "folds" : "",
+    "hash" : "2698383478",
+    "id" : "8BF7DFB0",
+    "lastKnownWriteTime" : 1655990516,
+    "last_content_update" : 1655990516500,
+    "path" : "D:/data/data16/IA score/sangsing/R/sangsing.R",
+    "project_path" : "R/sangsing.R",
+    "properties" : {
+        "cursorPosition" : "8,12",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

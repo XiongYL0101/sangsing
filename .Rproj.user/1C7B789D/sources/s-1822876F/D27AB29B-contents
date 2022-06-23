@@ -1,0 +1,1395 @@
+library(GEOquery)
+library(Biobase)
+library(BiocGenerics)
+library(parallel)
+library(cluster)
+library(factoextra)
+library(FactoMineR)
+library(reshape2)
+library(ggplot2)
+library(reshape)
+library(RColorBrewer)
+library(pheatmap)
+library(ConsensusClusterPlus)
+library(dplyr)
+library(reshape)
+library(survival)
+library(survminer)
+library(parallel)
+library(ggplot2)
+library(ggpubr)
+library(magrittr)
+library(umap)
+library(Rtsne)
+library(Seurat)
+library(dplyr)
+library(cluster)
+library(factoextra)
+library(FactoMineR)
+library(factoextra)
+library(reshape2)
+library(ggplot2)
+library(GSVA)
+library(GSEABase)
+library(msigdbr)
+library(clusterProfiler)
+options(connectionObserver = NULL)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(limma)
+library(edgeR)
+library(RColorBrewer)
+library(pheatmap)
+library(AnnotationDbi)
+library(reshape)
+library(reshape2)
+library(clusterProfiler)
+library(DESeq2)
+library(maftools)
+library(TCGAmutations)
+library(tidyr)
+library(ggpubr)
+library(ggthemes)
+library(glmnet)
+library(Matrix)
+library(ggcorrplot)
+library(ggplot2)
+library(FactoMineR)
+library(cluster)
+library(factoextra)
+library(pROC)
+options(digits=6)
+library(tidyverse)
+library(sva)
+library(descriptr)
+Sys.setenv("VROOM_CONNECTION_SIZE"=99999999)
+library(devtools)
+
+getwd()
+setwd("D:/data/data16")
+
+
+lR1<-read.table("NSCLC LASSO.csv",
+                sep=",",header=TRUE,stringsAsFactors=FALSE)
+g1<-subset(lR1,Histology=="AD",select=c(1:17)) ##2484
+
+
+table(g1$pStage)
+g1$pstage1[g1$pStage=="IA"]<-"IA"
+g1$pstage1[g1$pStage=="IB"|
+             g1$pStage=="II"|
+             g1$pStage=="IIA"|
+             g1$pStage=="IIB"]<-"IB-II"
+g1$pstage1[g1$pStage=="III"|
+             g1$pStage=="IIIA"|
+             g1$pStage=="IIIB"]<-"III"
+g1$pstage1[g1$pStage=="IV"]<-"IV"
+
+table(g1$pstage1)##IA IB-II   III    IV 845  1177   345    51
+
+g1$OS.time<-as.numeric(g1$OS.time)
+g1$OS.status<-as.numeric(g1$OS.status)
+g1$PFS.time<-as.numeric(g1$PFS.time)
+g1$PFS.status<-as.numeric(g1$PFS.status)
+
+options(digits=3)
+
+
+
+
+##5 year
+LUAD5<-subset(g1,g1$pstage1=="IA",select=c(1:18))
+LUAD5$Typesur[LUAD5$OS.time > 60]<-"Low risk"
+LUAD5$Typesur[LUAD5$OS.time < 60 & LUAD5$OS.status=="1"]<-"High risk"
+LUAD5$Typesur[LUAD5$OS.time < 60 & LUAD5$OS.status=="0"]<-"Unknow"
+table(LUAD5$Typesur)
+table(LUAD5$Dataset,LUAD5$Typesur)
+
+
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow",select=c(1:19))
+
+zhe2<-roc(zhe1$Typesur,zhe1$LAS)
+auc(zhe2)###  Area under the curve: 0.866
+ci(zhe2)#95% CI: 0.83-0.902 (DeLong)
+pdf("LUAD IA score 5 year.pdf",width=5, height=5)
+plot(zhe2,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.866 \n 95% CI: 0.83-0.902",
+     cex=1,font=2)
+dev.off()
+
+set.seed(20220525)
+##K1
+ak<-rep(c("ak1","ak2","ak3","ak4","ak5"),90)
+aka<-sample(ak,450,rep=F)
+akb<-as.data.frame(t(as.data.frame(rbind(c(1:450),aka))))
+
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak3","ak4"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.875
+ci(ak1lR)##95% CI: 0.836-0.913 (DeLong)
+pdf("K1 LUAD IA roc 5 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.875 \n 95% CI: 0.836-0.913",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak5"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.294)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.294)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K1 LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+
+##敏感度
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+##特异度
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+
+##约登指数
+yue1<-TRP+TNR-1
+
+
+##K2
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak3","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.859
+ci(ak1lR)##95% CI: 0.817-0.902 (DeLong)
+pdf("K2 LUAD IA roc 5 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.859 \n 95% CI: 0.817-0.902",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak4"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.449)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.449)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K2 LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.735294
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.928571
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.663866
+yue1<-TRP+TNR-1
+yue1
+
+
+##K3
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.874
+ci(ak1lR)##95% CI: 0.835-0.912 (DeLong)
+pdf("K3 LUAD IA roc 5 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.874 \n 95% CI: 0.835-0.912",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak3"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.449)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.449)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K3 LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.647059
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.946429
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.593487
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##K4
+ak1<-subset(akb,akb$aka %in% c("ak1","ak3","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve:  0.865
+ci(ak1lR)##95% CI: 0.824-0.905 (DeLong)
+pdf("K4 LUAD IA roc 5 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.865 \n 95% CI: 0.824-0.905",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak2"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.447)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.447)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K4 LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.666667
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.904762
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.571429
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##K5
+ak1<-subset(akb,akb$aka %in% c("ak2","ak3","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve:  0.858
+ci(ak1lR)##95% CI: 0.816-0.9 (DeLong)
+pdf("K5 LUAD IA roc 5 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.858 \n 95% CI: 0.816-0.9",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak1"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.449)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.449)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K5 LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.692308
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.960784
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.653092
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##average ##-0.4176
+((-0.294)+(-0.449)+(-0.449)+(-0.447)+(-0.449))/5
+ak1as<-zhe1
+ak1as$LAS1[ak1as$LAS>(-0.4176)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.4176)]<-"High risk"
+
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("LUAD IA roc 5 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.677019
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.934256
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.611275
+yue1<-TRP+TNR-1
+yue1
+
+##同时衡量其他经典病理因素
+all<-subset(g1,g1$pstage1=="IA",select=c(1:18))
+all$pAge[all$Age>65]<-"1old"
+all$pAge[all$Age<=65]<-"0young"
+all$pTP53[all$TP53=="Mut"]<-"1Mut"
+all$pTP53[all$TP53 %in% c("Wt","WT")]<-"0WT"
+all$pKRAS[all$KRAS=="Mut"]<-"1Mut"
+all$pKRAS[all$KRAS %in% c("Wt","WT")]<-"0WT"
+all$pEGFR[all$EGFR=="Mut"]<-"1Mut"
+all$pEGFR[all$EGFR %in% c("Wt","WT")]<-"0WT"
+
+LUAD5<-all
+LUAD5$Typesur[LUAD5$OS.time > 60]<-"Low risk"
+LUAD5$Typesur[LUAD5$OS.time < 60 & LUAD5$OS.status=="1"]<-"High risk"
+LUAD5$Typesur[LUAD5$OS.time < 60 & LUAD5$OS.status=="0"]<-"Unknow"
+table(LUAD5$Typesur)
+
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow",select=c(1:23))
+
+ak1as<-zhe1
+ak1as$LAS1[ak1as$LAS>(-0.4176)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.4176)]<-"High risk"
+
+
+##1old
+ak1asb<-subset(ak1as,ak1as$pAge=="1old",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix older.pdf", width=3, height=2.5)
+
+
+##敏感度 0.698
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.948
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.64
+yue1<-TRP+TNR-1
+yue1
+
+
+##0young
+ak1asb<-subset(ak1as,ak1as$pAge=="0young",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix young.pdf", width=3, height=2.5)
+
+
+##敏感度 0.653
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.927
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.581
+yue1<-TRP+TNR-1
+yue1
+
+
+###
+##F
+ak1asb<-subset(ak1as,ak1as$Gender=="F",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix F.pdf", width=3, height=2.5)
+
+
+##敏感度 0.63
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.957
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.587
+yue1<-TRP+TNR-1
+yue1
+
+
+
+
+##M
+ak1asb<-subset(ak1as,ak1as$Gender=="M",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix M.pdf", width=3, height=2.5)
+
+
+##敏感度 0.716
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.905
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.621
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##Smoking
+ak1asb<-subset(ak1as,ak1as$Smoking==1,select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix Smoking.pdf", width=3, height=2.5)
+
+
+##敏感度 0.697
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.916
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.613
+yue1<-TRP+TNR-1
+yue1
+
+
+##non Smoking
+ak1asb<-subset(ak1as,ak1as$Smoking==0,select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix non-Smoking.pdf", width=3, height=2.5)
+
+
+##敏感度 0.385
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.94
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.325
+yue1<-TRP+TNR-1
+yue1
+
+
+##TP53 Mut
+ak1asb<-subset(ak1as,ak1as$pTP53=="1Mut",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix TP531Mut.pdf", width=3, height=2.5)
+
+
+##敏感度 0.85
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.812
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.663
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##TP53 OWT
+ak1asb<-subset(ak1as,ak1as$pTP53=="0WT",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix TP530WT.pdf", width=3, height=2.5)
+
+
+##敏感度 0.69
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.915
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.606
+yue1<-TRP+TNR-1
+yue1
+
+
+##pKRAS Mut
+ak1asb<-subset(ak1as,ak1as$pKRAS=="1Mut",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix KRAS1Mut.pdf", width=3, height=2.5)
+
+
+##敏感度 0.864
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.812
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.676
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##KRAS OWT
+ak1asb<-subset(ak1as,ak1as$pKRAS=="0WT",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix KRAS0WT.pdf", width=3, height=2.5)
+
+
+##敏感度 0.698
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.924
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.622
+yue1<-TRP+TNR-1
+yue1
+
+
+##pEGFR Mut
+ak1asb<-subset(ak1as,ak1as$pEGFR=="1Mut",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix EGFR1Mut.pdf", width=3, height=2.5)
+
+
+##敏感度 0.615
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.917
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.532
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##EGFR OWT
+ak1asb<-subset(ak1as,ak1as$pEGFR=="0WT",select=c(1:24))
+
+hu1<-as.data.frame(table(ak1asb$Typesur,ak1asb$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+ggsave("LUAD IA roc 5 year Matrix EGFR0WT.pdf", width=3, height=2.5)
+
+
+##敏感度 0.691
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.854
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.545
+yue1<-TRP+TNR-1
+yue1
+
+
+
+
+##多因素Nomo
+
+duoor1<-ak1as
+duoor1$LAS2[ak1as$LAS>(-0.4176)]<-"1"
+duoor1$LAS2[ak1as$LAS<=(-0.4176)]<-"0"
+duoor1$Typesur1[duoor1$Typesur=="High risk"]<-1
+duoor1$Typesur1[duoor1$Typesur=="Low risk"]<-0
+duoor1$Typesur1<-as.numeric(duoor1$Typesur1)
+duoor2<-glm(Typesur1~pAge+Gender+Smoking+pTP53+
+              pKRAS+pEGFR+LAS2,data=duoor1,family=binomial())
+
+duoor2<-glm(Typesur1~pAge+Gender+Smoking+LAS2,data=duoor1,family=binomial())
+
+duoor2<-glm(Typesur1~pTP53,data=duoor1,family=binomial())
+duoor2<-glm(Typesur1~Gender,data=duoor1,family=binomial())
+duoor2<-glm(Typesur1~Smoking,data=duoor1,family=binomial())
+duoor2<-glm(Typesur1~pAge,data=duoor1,family=binomial())
+duoor2<-glm(Typesur1~pKRAS,data=duoor1,family=binomial())
+duoor2<-glm(Typesur1~pEGFR,data=duoor1,family=binomial())
+
+
+summary(duoor2)
+
+
+colnames(duoor1)
+
+##PFS
+LUAD5p<-subset(g1,g1$pstage1=="IA",select=c(1:18))
+LUAD5p$Typesur[LUAD5p$PFS.time > 60]<-"Low risk"
+LUAD5p$Typesur[LUAD5p$PFS.time < 60 & LUAD5$PFS.status=="1"]<-"High risk"
+LUAD5p$Typesur[LUAD5p$PFS.time < 60 & LUAD5$PFS.status=="0"]<-"Unknow"
+table(LUAD5p$Typesur)
+
+zhe1<-subset(LUAD5p,LUAD5p$Typesur!="Unknow",select=c(1:19))
+ak1as<-zhe1
+ak1as$LAS1[ak1as$LAS>(-0.4176)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.4176)]<-"High risk"
+
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("LUAD IA roc 5 year Matrix pfs.pdf", width=3, height=2.5)
+
+
+##敏感度 0.48
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.951515
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.431515
+yue1<-TRP+TNR-1
+yue1
+
+
+
+
+##3 year
+LUAD5<-subset(g1,g1$pstage1=="IA",select=c(1:18))
+LUAD5$Typesur[LUAD5$OS.time > 36]<-"Low risk"
+LUAD5$Typesur[LUAD5$OS.time < 36 & LUAD5$OS.status=="1"]<-"High risk"
+LUAD5$Typesur[LUAD5$OS.time < 36 & LUAD5$OS.status=="0"]<-"Unknow"
+table(LUAD5$Typesur)
+
+
+
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow",select=c(1:19))
+
+zhe2<-roc(zhe1$Typesur,zhe1$LAS)
+auc(zhe2)###  Area under the curve: 0.812
+ci(zhe2)#95% CI: 0.77-0.855 (DeLong)
+pdf("LUAD IA score 3 year.pdf",width=5, height=5)
+plot(zhe2,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.812 \n 95% CI: 0.77-0.855",
+     cex=1,font=2)
+dev.off()
+
+
+set.seed(20220525)
+##K1
+ak<-rep(c("ak1","ak2","ak3","ak4","ak5"),118)
+aka<-sample(ak,590,rep=F)
+akb<-as.data.frame(t(as.data.frame(rbind(c(1:590),aka))))
+
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak3","ak4"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.821
+ci(ak1lR)##95% CI: 0.776-0.866 (DeLong)
+pdf("K1 LUAD IA roc 3 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.821 \n 95% CI: 0.776-0.866",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak5"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.297)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.297)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K1 LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+
+##敏感度 ##0.75
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.77551
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.52551
+yue1<-TRP+TNR-1
+yue1
+
+##K2
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak3","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.821
+ci(ak1lR)##95% CI: 0.774-0.867 (DeLong)
+pdf("K2 LUAD IA roc 3 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.821 \n 95% CI: 0.774-0.867",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak4"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.294)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.294)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K2 LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.709677
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.862069
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.571746
+yue1<-TRP+TNR-1
+yue1
+
+
+##K3
+ak1<-subset(akb,akb$aka %in% c("ak1","ak2","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.824
+ci(ak1lR)##95% CI: 0.778-0.871 (DeLong)
+pdf("K3 LUAD IA roc 3 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.824 \n 95% CI: 0.778-0.871",
+     cex=1,font=2)
+dev.off()
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak3"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.482)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.482)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K3 LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.625
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.797872
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.422872
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##K4
+ak1<-subset(akb,akb$aka %in% c("ak1","ak3","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.801
+ci(ak1lR)##95% CI: 0.752-0.85 (DeLong)
+pdf("K4 LUAD IA roc 3 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC: 0.801 \n 95% CI: 0.752-0.85",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak2"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.294)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.294)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K4 LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.714286
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.835052
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.549337
+yue1<-TRP+TNR-1
+yue1
+
+
+
+##K5
+ak1<-subset(akb,akb$aka %in% c("ak2","ak3","ak4","ak5"),select=c(1:2))
+ak1a<-zhe1[as.numeric(ak1$V1),]
+ak1lR<-roc(ak1a$Typesur,ak1a$LAS)
+auc(ak1lR)###  Area under the curve: 0.806
+ci(ak1lR)##95% CI: 0.755-0.856 (DeLong)
+pdf("K5 LUAD IA roc 3 year.pdf",width=5, height=5)
+plot(ak1lR,print.auc=FALSE, auc.polygon=TRUE, max.auc.polygon=TRUE,
+     auc.polygon.col="#F08080", print.thres=TRUE,font=2,
+     main="",cex.main=2,
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4)
+text(0.3,0.3,"AUC:0.806 \n 95% CI: 0.755-0.856",
+     cex=1,font=2)
+dev.off()
+
+ak1s<-subset(akb,akb$aka %in% c("ak1"),select=c(1:2))
+ak1as<-zhe1[as.numeric(ak1s$V1),]
+ak1as$LAS1[ak1as$LAS>(-0.294)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.294)]<-"High risk"
+
+##混淆矩阵
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("K5 LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.72
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.827957
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.547957
+yue1<-TRP+TNR-1
+yue1
+
+
+##average ##-0.4176
+((-0.297)+( -0.294)+( -0.482)+( -0.294)+( -0.294))/5
+ak1as<-zhe1
+ak1as$LAS1[ak1as$LAS>(-0.3322)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.3322)]<-"High risk"
+
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("LUAD IA roc 3 year Matrix.pdf", width=3, height=2.5)
+
+
+##敏感度 0.710744
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.811441
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数  0.522184
+yue1<-TRP+TNR-1
+yue1
+
+
+##PFS
+LUAD5p<-subset(g1,g1$pstage1=="IA",select=c(1:18))
+LUAD5p$Typesur[LUAD5p$PFS.time > 36]<-"Low risk"
+LUAD5p$Typesur[LUAD5p$PFS.time < 36 & LUAD5$PFS.status=="1"]<-"High risk"
+LUAD5p$Typesur[LUAD5p$PFS.time < 36 & LUAD5$PFS.status=="0"]<-"Unknow"
+table(LUAD5p$Typesur)
+
+zhe1<-subset(LUAD5p,LUAD5p$Typesur!="Unknow",select=c(1:19))
+ak1as<-zhe1
+ak1as$LAS1[ak1as$LAS>(-0.3322)]<-"Low risk"
+ak1as$LAS1[ak1as$LAS<=(-0.3322)]<-"High risk"
+
+hu1<-as.data.frame(table(ak1as$Typesur,ak1as$LAS1))
+colnames(hu1)<-c("Truelabel","Predictedlabel","Freq")
+hu1$Freq<-as.numeric(hu1$Freq)
+class(hu1$Freq)
+
+hu2<-ggplot(hu1,aes(Truelabel,Predictedlabel, fill=Freq)) +
+  geom_tile(show.legend = F, color = "white") +
+  geom_text(aes(label = Freq), size = 10) +
+  scale_fill_gradient(low = "#D3D3D3", high = "#DC143C") +
+  theme_minimal()+xlab("True label")+ylab("Predicted label")+
+  theme(axis.text.x=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.text.y=element_text(size=12,face="bold",colour="black",family=""))+
+  theme(axis.title.x=element_text(size=15,face="bold",colour="black",family=""))+
+  theme(axis.title.y=element_text(size=15,face="bold",colour="black",family=""))
+hu2
+
+ggsave("LUAD IA roc 3 year Matrix pfs.pdf", width=3, height=2.5)
+
+
+##敏感度  0.530612
+TRP<-hu1[1,3]/(hu1[1,3]+hu1[3,3])
+TRP
+##特异度 0.844203
+TNR<-hu1[4,3]/(hu1[2,3]+hu1[4,3])
+TNR
+##约登指数 0.374815
+yue1<-TRP+TNR-1
+yue1
+
+
+
+
+
+
+
+
+
+
+
+
+##不同数据集
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE13213",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE26939",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE30219",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE31210",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE41271",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE42127",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE50081",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE63459",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE68465",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE68571",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="GSE72094",select=c(1:19))
+zhe1<-subset(LUAD5,LUAD5$Typesur!="Unknow" & LUAD5$Dataset=="TCGA-LUAD",select=c(1:19))
+
+
+
+
+
+zhe2GSE13213<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE26939<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE30219<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE31210<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE41271<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE42127<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE50081<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE63459<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE68465<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE68571<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2GSE72094<-roc(zhe1$Typesur,zhe1$LAS)
+zhe2TCGALUAD<-roc(zhe1$Typesur,zhe1$LAS)
+
+
+
+
+auc(zhe2TCGALUAD)
+ci(zhe2TCGALUAD)
+
+pdf("dataset LUAD IA score 5 year.pdf",width=5, height=5)
+
+
+par(lty=1)
+
+plot(zhe2GSE13213,font=2,
+     main="",cex.main=2,col="#2F4F4F",
+     font.lab=2,font.axis=2,cex.lab=1.8,cex.axis=1.4) ##Area under the curve: 0.811 ##95% CI: 0.667-0.956 (DeLong)
+
+plot(zhe2GSE26939,col="#008B8B",add=T)##Area under the curve: 0.737 ##95% CI: 0.488-0.987 (DeLong)
+plot(zhe2GSE30219,col="#008080",add=T)##Area under the curve: 0.855 ##95% CI: 0.751-0.958 (DeLong)
+plot(zhe2GSE31210,col="#48D1CC",add=T)##Area under the curve: 0.899 ##95% CI: 0.7-1 (DeLong)
+plot(zhe2GSE41271,col="#20B2AA",add=T)##Area under the curve: 1     ##95% CI: 1-1 (DeLong)
+plot(zhe2GSE42127,col="#40E0D0",add=T)##Area under the curve: 1     ##95% CI: 1-1 (DeLong)
+plot(zhe2GSE50081,col="#7FFFAA",add=T)##Area under the curve: 0.931 ##95% CI: 0.82-1 (DeLong)
+plot(zhe2GSE63459,col="#87CEFA",add=T)##Area under the curve: 0.909 ##95% CI: NA-NA (DeLong)
+plot(zhe2GSE68465,col="#ADD8E6",add=T)##Area under the curve: 0.824 ##95% CI: 0.724-0.924 (DeLong
+plot(zhe2GSE68571,col="#E1FFFF",add=T)##Area under the curve: 0.974 ##95% CI: 0.932-1 (DeLong)
+plot(zhe2GSE72094,col="#AFEEEE",add=T)##Area under the curve: 0.978 ##95% CI: 0.925-1 (DeLong)
+plot(zhe2TCGALUAD,col="#F0FFFF",add=T)##Area under the curve: 0.722 ##95% CI: 0.565-0.878 (DeLong)
+
+
+
+
+
+##开发R包
+
+
+dev.off()
+
+
+
+
+dev.off()
+
+
+usethis::create_package("D:/data/data16/toypackages")
+devtools::load_all()
+usethis::use_data(a3ml)
+usethis::use_testthat()
+devtools::test()
+library(IAscore)
+test_check("IAsc")
+library(devtools)
+library(gert)
+devtools::document()
+library(devtools)
+devtools::document()
+devtools::load_all()
+devtools::run_examples()
+IAsc<-function(x){mean<-mean(x)}
+devtools::check()
+
+
+library(devtools)
+packageVersion("devtools")
+path <- "D:/data/data16/regexcite"
+dir.create(path)
+create_package(path)
+R.Version()
+install.packages(c("devtools","roxygen2","testthat","knitr"))
+install.packages("rstudioapi")
+rstudioapi::isAvailable("0.99.149")
+devtools::install_github("hadley/devtools")
+
+writeLines('PATH="${RTOOLS40_HOME}\\usr\\bin;${PATH}"', con = "~/.Renviron")
+Sys.which("make")
+install.packages("jsonlite", type = "source")
+
+library(devtools)
+has_devel()
+library(roxygen2)
+library(testthat)
+devtools::session_info()
+.libPaths()
+devtools::load_all()
+install.packages("formatR")
+formatR::tidy_dir("R")
+install.packages("lintr")
+lintr::lint_package()
+old<-options(stringsAsFactors = FALSE)
+on.exit(options(old),add=T)
+devtools::create("mypackage")
+use_git()  
+
+sang<-function(x,y){x+y-1}
+sang(1,2)
+
+

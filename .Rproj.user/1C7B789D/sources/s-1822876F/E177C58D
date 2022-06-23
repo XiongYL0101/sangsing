@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1655989111200.000,
+    "dirty" : false,
+    "encoding" : "CP936",
+    "folds" : "",
+    "hash" : "3059999869",
+    "id" : "E177C58D",
+    "lastKnownWriteTime" : 1655990287,
+    "last_content_update" : 1655990287323,
+    "path" : "D:/data/data16/IA score/sangsing/R/sang.R",
+    "project_path" : "R/sang.R",
+    "properties" : {
+        "cursorPosition" : "6,0",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
